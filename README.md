@@ -1,4 +1,4 @@
-# OPTEX-splatR [by Mike Flex @ VII Studios]
+# OPTEX-splatR v0.5.0
 
 A super slow implementation of Apple's `ml-sharp` that runs natively on Windows 10/11 with minimal configuration. 
 This application acts as a standalone GUI wrapper that automatically downloads the necessary models and generates 3D Gaussian Splats from a single image.
