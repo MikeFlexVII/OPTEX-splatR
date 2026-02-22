@@ -2,8 +2,6 @@ customtkinter
 plyfile
 pyinstaller
 numpy
-# (ml-sharp dependencies)
-torch
-torchvision
-tqdm
-pillow
+piexif
+open3d
+Pillow
