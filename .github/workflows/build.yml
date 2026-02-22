@@ -22,7 +22,7 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         
-- name: Build with PyInstaller
+    - name: Build with PyInstaller
       run: |
         pyinstaller --noconsole --onedir --icon=app.ico app.py
         
