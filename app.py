@@ -17,11 +17,17 @@ class SharpWindowsApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         # --- App Branding ---
-        self.title("OPTEX splatR 1.0")
-        self.geometry("450x640") 
+        self.title("OPTEX Visual Systems | Image to Gaussian Splat Converter 1.0")
+        self.geometry("450x680") 
         self.filepath = None
-        self.final_ply_path = None
         
+        # Define isolated backend paths
+        self.backend_dir = os.path.join(os.getcwd(), "backend_env")
+        self.sharp_exe = os.path.join(self.backend_dir, "Scripts", "sharp.exe")
+        
+        # The internal hidden file where the preview is temporarily stored
+        self.preview_ply_path = os.path.join(self.backend_dir, "temp_preview.ply")
+
         # --- Set the Window Icon ---
         try:
             import sys
@@ -31,10 +37,6 @@ class SharpWindowsApp(ctk.CTk):
                 self.iconbitmap("app.ico")
         except Exception:
             pass
-        
-        # Define isolated backend paths
-        self.backend_dir = os.path.join(os.getcwd(), "backend_env")
-        self.sharp_exe = os.path.join(self.backend_dir, "Scripts", "sharp.exe")
 
         # --- UI Setup ---
         self.label_status = ctk.CTkLabel(self, text="Checking dependencies...", text_color="yellow")
@@ -65,10 +67,13 @@ class SharpWindowsApp(ctk.CTk):
         self.dropdown_sh = ctk.CTkOptionMenu(self, variable=self.sh_var, values=["0 (Base Color Only)", "1", "2", "3 (Default/High)"])
         self.dropdown_sh.pack(pady=5)
 
-        self.btn_generate = ctk.CTkButton(self, text="Generate Splat", command=self.generate, state="disabled")
-        self.btn_generate.pack(pady=20)
+        # Generate Preview Button
+        self.btn_preview = ctk.CTkButton(self, text="Generate Preview", command=self.generate_preview, state="disabled", fg_color="green", hover_color="darkgreen")
+        self.btn_preview.pack(pady=15)
 
-        self.btn_preview = ctk.CTkButton(self, text="Preview", command=self.preview_splat, fg_color="green", hover_color="darkgreen")
+        # Export Button (Disabled until a preview is generated)
+        self.btn_export = ctk.CTkButton(self, text="Export Final Splat", command=self.export_splat, state="disabled")
+        self.btn_export.pack(pady=5)
 
         # --- Footer ---
         self.label_footer = ctk.CTkLabel(self, text="VC'd by Mike Flex (Gemini 3.1 CLI) 2026", text_color="gray", font=("Arial", 10))
@@ -87,7 +92,7 @@ class SharpWindowsApp(ctk.CTk):
         else:
             self.label_status.configure(text="Ready to generate!", text_color="lightgreen")
             self.btn_load.configure(state="normal")
-            self.btn_generate.configure(state="normal")
+            self.btn_preview.configure(state="normal")
 
     def install_backend(self):
         try:
@@ -159,7 +164,7 @@ class SharpWindowsApp(ctk.CTk):
             self.progress_bar.pack_forget() 
             self.label_status.configure(text="Installation complete! Ready to generate.", text_color="lightgreen")
             self.btn_load.configure(state="normal")
-            self.btn_generate.configure(state="normal")
+            self.btn_preview.configure(state="normal")
 
         except Exception as e:
             self.progress_bar.stop()
@@ -169,7 +174,7 @@ class SharpWindowsApp(ctk.CTk):
         self.filepath = filedialog.askopenfilename(filetypes=[("Images", "*.png *.jpg *.jpeg *.heic")])
         if self.filepath:
             self.label_file.configure(text=os.path.basename(self.filepath))
-            self.btn_preview.pack_forget()
+            self.btn_export.configure(state="disabled")
 
     def inject_exif_focal_length(self, source_path, dest_path, focal_length_mm):
         img = Image.open(source_path)
@@ -186,37 +191,26 @@ class SharpWindowsApp(ctk.CTk):
         
         img.save(dest_path, "jpeg", exif=exif_bytes)
 
-    def generate(self):
+    def generate_preview(self):
         if not self.filepath:
             return
             
-        save_path = filedialog.asksaveasfilename(
-            defaultextension=".ply",
-            filetypes=[("3D Gaussian Splat", "*.ply")],
-            title="Save 3D Splat As",
-            initialfile="my_splat.ply"
-        )
-        
-        if not save_path:
-            return
-        
-        self.btn_generate.configure(text="Generating...", state="disabled")
+        self.btn_preview.configure(text="Generating...", state="disabled")
+        self.btn_export.configure(state="disabled")
         self.label_status.configure(text="Running Apple SHARP model...", text_color="yellow")
         self.progress_bar.configure(mode="indeterminate")
         self.progress_bar.pack(pady=5, after=self.label_status)
         self.progress_bar.start()
-        self.btn_preview.pack_forget()
         self.update()
 
-def run_generation():
+        def run_generation():
             output_dir = os.path.dirname(self.filepath)
             temp_out_dir = os.path.join(output_dir, "sharp_temp_workspace")
             temp_img = os.path.join(output_dir, "temp_sharp_input.jpg")
             c_flags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
 
             try:
-                # --- THE SSL BYPASS INJECTION ---
-                # Automatically bypass strict Antivirus/Firewall SSL checks in the isolated environment
+                # --- SSL Bypass ---
                 site_packages = os.path.join(self.backend_dir, "Lib", "site-packages")
                 site_customize = os.path.join(site_packages, "sitecustomize.py")
                 if os.path.exists(site_packages) and not os.path.exists(site_customize):
@@ -226,7 +220,6 @@ def run_generation():
                         f.write("    ssl._create_default_https_context = ssl._create_unverified_context\n")
                         f.write("except AttributeError:\n")
                         f.write("    pass\n")
-                # --------------------------------
 
                 os.makedirs(temp_out_dir, exist_ok=True)
                 
@@ -235,9 +228,7 @@ def run_generation():
 
                 result = subprocess.run(
                     [self.sharp_exe, "predict", "-i", temp_img, "-o", temp_out_dir], 
-                    capture_output=True, 
-                    text=True, 
-                    creationflags=c_flags
+                    capture_output=True, text=True, creationflags=c_flags
                 )
                 
                 if result.returncode != 0:
@@ -254,34 +245,60 @@ def run_generation():
                     raise FileNotFoundError("ml-sharp finished, but no .ply was found.")
                 
                 selected_level = int(self.sh_var.get()[0])
-                filter_sh_level(generated_ply, save_path, selected_level)
+                
+                # Save to the internal preview path instead of asking the user
+                filter_sh_level(generated_ply, self.preview_ply_path, selected_level)
                 
                 if os.path.exists(temp_img): os.remove(temp_img)
                 shutil.rmtree(temp_out_dir, ignore_errors=True)
                     
-                self.final_ply_path = save_path
-                self.label_status.configure(text=f"Done! Saved to {os.path.basename(save_path)}", text_color="lightgreen")
-                self.btn_preview.pack(pady=10) 
+                self.label_status.configure(text="Preview generated! Check the 3D window.", text_color="lightgreen")
+                
+                # Automatically pop open the 3D viewer
+                self.show_3d()
+
+                # Enable the Export button now that a preview exists
+                self.btn_export.configure(state="normal")
                 
             except Exception as e:
                 self.label_status.configure(text=f"Error: {str(e)}", text_color="red")
 
             self.progress_bar.stop()
             self.progress_bar.pack_forget()
-            self.btn_generate.configure(text="Generate Splat", state="normal")
+            self.btn_preview.configure(text="Generate Preview", state="normal")
 
-    def preview_splat(self):
-        if not self.final_ply_path or not os.path.exists(self.final_ply_path):
+        threading.Thread(target=run_generation, daemon=True).start()
+
+    def show_3d(self):
+        if not os.path.exists(self.preview_ply_path):
             return
             
-        def show_3d():
+        def launch_viewer():
             try:
-                pcd = o3d.io.read_point_cloud(self.final_ply_path)
-                o3d.visualization.draw_geometries([pcd], window_name=f"Splat Preview - {os.path.basename(self.final_ply_path)}", width=1024, height=768)
+                pcd = o3d.io.read_point_cloud(self.preview_ply_path)
+                o3d.visualization.draw_geometries([pcd], window_name="Splat Preview - Close window to continue", width=1024, height=768)
             except Exception as e:
                 print(f"Preview Error: {e}")
             
-        threading.Thread(target=show_3d, daemon=True).start()
+        threading.Thread(target=launch_viewer, daemon=True).start()
+
+    def export_splat(self):
+        if not os.path.exists(self.preview_ply_path):
+            return
+            
+        save_path = filedialog.asksaveasfilename(
+            defaultextension=".ply",
+            filetypes=[("3D Gaussian Splat", "*.ply")],
+            title="Export Final Splat As",
+            initialfile="my_splat.ply"
+        )
+        
+        if save_path:
+            try:
+                shutil.copy(self.preview_ply_path, save_path)
+                self.label_status.configure(text=f"Exported successfully to {os.path.basename(save_path)}!", text_color="lightgreen")
+            except Exception as e:
+                self.label_status.configure(text=f"Export Error: {str(e)}", text_color="red")
 
 if __name__ == "__main__":
     app = SharpWindowsApp()
