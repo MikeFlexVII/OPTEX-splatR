@@ -6,6 +6,9 @@ import threading
 import urllib.request
 import zipfile
 import shutil
+import piexif
+import open3d as o3d
+from PIL import Image
 from sh_filter import filter_sh_level
 
 ctk.set_appearance_mode("Dark")
@@ -14,8 +17,9 @@ class SharpWindowsApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("Sharp for Windows")
-        self.geometry("450x480") 
+        self.geometry("450x620") 
         self.filepath = None
+        self.final_ply_path = None
         
         # --- Set the Window Icon ---
         try:
@@ -39,22 +43,37 @@ class SharpWindowsApp(ctk.CTk):
         self.progress_bar.set(0)
 
         self.btn_load = ctk.CTkButton(self, text="Select Image", command=self.load_image, state="disabled")
-        self.btn_load.pack(pady=15)
+        self.btn_load.pack(pady=10)
 
         self.label_file = ctk.CTkLabel(self, text="No image selected")
         self.label_file.pack()
 
+        # Focal Length Slider
+        self.label_fl = ctk.CTkLabel(self, text="Focal Length (mm): 50")
+        self.label_fl.pack(pady=(15, 0))
+        
+        self.slider_fl = ctk.CTkSlider(self, from_=10, to=150, command=self.update_fl_label)
+        self.slider_fl.set(50)
+        self.slider_fl.pack(pady=5)
+
+        # Spherical Harmonics Dropdown
         self.label_sh = ctk.CTkLabel(self, text="Spherical Harmonics Level:")
-        self.label_sh.pack(pady=(20, 0))
+        self.label_sh.pack(pady=(15, 0))
         
         self.sh_var = ctk.StringVar(value="3 (Default/High)")
         self.dropdown_sh = ctk.CTkOptionMenu(self, variable=self.sh_var, values=["0 (Base Color Only)", "1", "2", "3 (Default/High)"])
-        self.dropdown_sh.pack(pady=10)
+        self.dropdown_sh.pack(pady=5)
 
         self.btn_generate = ctk.CTkButton(self, text="Generate Splat", command=self.generate, state="disabled")
         self.btn_generate.pack(pady=20)
 
+        # Preview Button (Hidden by default)
+        self.btn_preview = ctk.CTkButton(self, text="Preview 3D Model", command=self.preview_splat, fg_color="green", hover_color="darkgreen")
+
         self.check_environment()
+
+    def update_fl_label(self, value):
+        self.label_fl.configure(text=f"Focal Length (mm): {int(value)}")
 
     def check_environment(self):
         if not os.path.exists(self.sharp_exe):
@@ -71,10 +90,8 @@ class SharpWindowsApp(ctk.CTk):
             c_flags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
             self.progress_bar.set(0.05)
 
-            # 1. Smart Python Detection
             python_path = shutil.which("python") or shutil.which("python3") or shutil.which("py")
             
-            # 2. Auto-Install Python if missing
             if not python_path:
                 self.label_status.configure(text="Python missing. Downloading Python 3.11 silently...", text_color="yellow")
                 self.progress_bar.configure(mode="indeterminate")
@@ -85,10 +102,8 @@ class SharpWindowsApp(ctk.CTk):
                 urllib.request.urlretrieve(installer_url, installer_path)
                 
                 self.label_status.configure(text="Installing Python (This takes a minute)...")
-                # Run installer silently for the current user only (No Admin/UAC prompts!)
                 subprocess.run([installer_path, "/quiet", "InstallAllUsers=0", "PrependPath=1", "Include_test=0"], check=True, creationflags=c_flags)
                 
-                # Locate the freshly installed Python
                 user_profile = os.environ.get('USERPROFILE', '')
                 fresh_python = os.path.join(user_profile, 'AppData', 'Local', 'Programs', 'Python', 'Python311', 'python.exe')
                 
@@ -105,7 +120,6 @@ class SharpWindowsApp(ctk.CTk):
                 self.progress_bar.stop()
                 self.progress_bar.configure(mode="determinate")
 
-            # 3. Download ml-sharp
             self.label_status.configure(text="Downloading ml-sharp from Apple...")
             url = "https://github.com/apple/ml-sharp/archive/refs/heads/main.zip"
             zip_path = "ml-sharp.zip"
@@ -118,19 +132,16 @@ class SharpWindowsApp(ctk.CTk):
 
             urllib.request.urlretrieve(url, zip_path, reporthook=download_progress)
 
-            # 4. Extract the ZIP
             self.label_status.configure(text="Extracting files...")
             self.progress_bar.set(0.5)
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
                 zip_ref.extractall(".")
             os.remove(zip_path)
 
-            # 5. Create venv
             self.label_status.configure(text="Creating isolated AI environment...")
             self.progress_bar.set(0.6)
             subprocess.run([python_path, "-m", "venv", "backend_env"], check=True, creationflags=c_flags)
 
-            # 6. Install PyTorch & Dependencies
             self.label_status.configure(text="Installing PyTorch & AI Dependencies (5-10 mins)...")
             self.progress_bar.configure(mode="indeterminate") 
             self.progress_bar.start() 
@@ -154,9 +165,37 @@ class SharpWindowsApp(ctk.CTk):
         self.filepath = filedialog.askopenfilename(filetypes=[("Images", "*.png *.jpg *.jpeg *.heic")])
         if self.filepath:
             self.label_file.configure(text=os.path.basename(self.filepath))
+            self.btn_preview.pack_forget()
+
+    def inject_exif_focal_length(self, source_path, dest_path, focal_length_mm):
+        img = Image.open(source_path)
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+            
+        try:
+            exif_dict = piexif.load(img.info.get("exif", b""))
+        except Exception:
+            exif_dict = {"0th": {}, "Exif": {}, "GPS": {}, "1st": {}, "thumbnail": None}
+
+        exif_dict["Exif"][piexif.ExifIFD.FocalLength] = (int(focal_length_mm * 10), 10)
+        exif_bytes = piexif.dump(exif_dict)
+        
+        img.save(dest_path, "jpeg", exif=exif_bytes)
 
     def generate(self):
         if not self.filepath:
+            return
+            
+        # 1. Ask the user where they want to save the final file
+        save_path = filedialog.asksaveasfilename(
+            defaultextension=".ply",
+            filetypes=[("3D Gaussian Splat", "*.ply")],
+            title="Save 3D Splat As",
+            initialfile="my_splat.ply"
+        )
+        
+        # If the user clicks "Cancel" on the save dialog, abort the process
+        if not save_path:
             return
         
         self.btn_generate.configure(text="Generating...", state="disabled")
@@ -164,24 +203,47 @@ class SharpWindowsApp(ctk.CTk):
         self.progress_bar.configure(mode="indeterminate")
         self.progress_bar.pack(pady=5, after=self.label_status)
         self.progress_bar.start()
+        self.btn_preview.pack_forget()
         self.update()
 
         def run_generation():
             output_dir = os.path.dirname(self.filepath)
-            temp_ply = os.path.join(output_dir, "temp_output.ply")
-            final_ply = os.path.join(output_dir, "final_splat.ply")
+            temp_out_dir = os.path.join(output_dir, "sharp_temp_workspace")
+            temp_img = os.path.join(output_dir, "temp_sharp_input.jpg")
             c_flags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
 
             try:
-                subprocess.run([self.sharp_exe, self.filepath, "--output", temp_ply], check=True, creationflags=c_flags)
+                os.makedirs(temp_out_dir, exist_ok=True)
                 
+                # Inject user's slider value into the image's EXIF
+                selected_fl = self.slider_fl.get()
+                self.inject_exif_focal_length(self.filepath, temp_img, selected_fl)
+
+                # Feed the injected image to the Apple CLI using the correct syntax
+                subprocess.run([self.sharp_exe, "predict", "-i", temp_img, "-o", temp_out_dir], check=True, creationflags=c_flags)
+                
+                # Find the generated .ply file inside the output folder
+                generated_ply = None
+                for file in os.listdir(temp_out_dir):
+                    if file.endswith(".ply"):
+                        generated_ply = os.path.join(temp_out_dir, file)
+                        break
+                        
+                if not generated_ply:
+                    raise FileNotFoundError("ml-sharp finished, but no .ply was found.")
+                
+                # Apply SH filter and save DIRECTLY to the user's chosen save_path
                 selected_level = int(self.sh_var.get()[0])
-                filter_sh_level(temp_ply, final_ply, selected_level)
+                filter_sh_level(generated_ply, save_path, selected_level)
                 
-                if os.path.exists(temp_ply):
-                    os.remove(temp_ply)
+                # Clean up temporary files/folders
+                if os.path.exists(temp_img): os.remove(temp_img)
+                shutil.rmtree(temp_out_dir, ignore_errors=True)
                     
-                self.label_status.configure(text="Done! Saved as final_splat.ply", text_color="lightgreen")
+                self.final_ply_path = save_path
+                self.label_status.configure(text=f"Done! Saved to {os.path.basename(save_path)}", text_color="lightgreen")
+                self.btn_preview.pack(pady=10) 
+                
             except Exception as e:
                 self.label_status.configure(text=f"Error: {str(e)}", text_color="red")
 
@@ -190,6 +252,19 @@ class SharpWindowsApp(ctk.CTk):
             self.btn_generate.configure(text="Generate Splat", state="normal")
 
         threading.Thread(target=run_generation, daemon=True).start()
+
+    def preview_splat(self):
+        if not self.final_ply_path or not os.path.exists(self.final_ply_path):
+            return
+            
+        def show_3d():
+            try:
+                pcd = o3d.io.read_point_cloud(self.final_ply_path)
+                o3d.visualization.draw_geometries([pcd], window_name=f"Splat Preview - {os.path.basename(self.final_ply_path)}", width=1024, height=768)
+            except Exception as e:
+                print(f"Preview Error: {e}")
+            
+        threading.Thread(target=show_3d, daemon=True).start()
 
 if __name__ == "__main__":
     app = SharpWindowsApp()
