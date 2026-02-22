@@ -1,4 +1,5 @@
-# OPTEX-splatR v0.5.0
+# OPTEX-splatR v0.5.0 Alpha (CPU Only)
+# Image to Gaussian Splat (.ply) for Windows 10/11
 
 A super slow implementation of Apple's `ml-sharp` that runs natively on Windows 10/11 with minimal configuration. 
 This application acts as a standalone GUI wrapper that automatically downloads the necessary models and generates 3D Gaussian Splats from a single image.
