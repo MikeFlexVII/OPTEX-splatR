@@ -6,13 +6,13 @@ This application acts as a standalone GUI wrapper that automatically downloads t
 
 ## ✨ Features
 
-# **Auto-Model Download:** Automatically fetches the required PyTorch models upon first run.
+**Auto-Model Download:** Automatically fetches the required PyTorch models upon first run. 
 
-# **Focal Length Pre-processing:** Fine-tune your image parameters before generation.
+**Focal Length Pre-processing:** Fine-tune your image parameters before generation. 
 
-# **Adjustable Spherical Harmonics (SH):** Lower the SH level (0-3) before export to significantly minimize `.ply` file sizes—perfect for web and streaming use.
+**Adjustable Spherical Harmonics (SH):** Lower the SH level (0-3) before export to significantly minimize `.ply` file sizes—perfect for web and streaming use. 
 
-# **Instant 3D Preview:** Review your results immediately in a pop-up 3D `.ply` viewer.
+**Instant 3D Preview:** Review your results immediately in a pop-up 3D `.ply` viewer.
 
 ## ⚡ Performance & Quality
 
