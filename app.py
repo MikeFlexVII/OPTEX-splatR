@@ -58,7 +58,7 @@ class SharpWindowsApp(ctk.CTk):
 
     def check_environment(self):
         if not os.path.exists(self.sharp_exe):
-            self.label_status.configure(text="First run detected. Preparing to install ml-sharp...")
+            self.label_status.configure(text="First run detected. Setting up engine...")
             self.progress_bar.pack(pady=5, after=self.label_status) 
             threading.Thread(target=self.install_backend, daemon=True).start()
         else:
@@ -69,13 +69,43 @@ class SharpWindowsApp(ctk.CTk):
     def install_backend(self):
         try:
             c_flags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-
             self.progress_bar.set(0.05)
-            python_path = shutil.which("python")
-            if not python_path:
-                self.label_status.configure(text="Error: You must install Python to use this app!", text_color="red")
-                return
 
+            # 1. Smart Python Detection
+            python_path = shutil.which("python") or shutil.which("python3") or shutil.which("py")
+            
+            # 2. Auto-Install Python if missing
+            if not python_path:
+                self.label_status.configure(text="Python missing. Downloading Python 3.11 silently...", text_color="yellow")
+                self.progress_bar.configure(mode="indeterminate")
+                self.progress_bar.start()
+                
+                installer_url = "https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe"
+                installer_path = "python_installer.exe"
+                urllib.request.urlretrieve(installer_url, installer_path)
+                
+                self.label_status.configure(text="Installing Python (This takes a minute)...")
+                # Run installer silently for the current user only (No Admin/UAC prompts!)
+                subprocess.run([installer_path, "/quiet", "InstallAllUsers=0", "PrependPath=1", "Include_test=0"], check=True, creationflags=c_flags)
+                
+                # Locate the freshly installed Python
+                user_profile = os.environ.get('USERPROFILE', '')
+                fresh_python = os.path.join(user_profile, 'AppData', 'Local', 'Programs', 'Python', 'Python311', 'python.exe')
+                
+                if os.path.exists(fresh_python):
+                    python_path = fresh_python
+                else:
+                    self.label_status.configure(text="Error: Could not locate installed Python.", text_color="red")
+                    self.progress_bar.stop()
+                    return
+                    
+                if os.path.exists(installer_path):
+                    os.remove(installer_path)
+                
+                self.progress_bar.stop()
+                self.progress_bar.configure(mode="determinate")
+
+            # 3. Download ml-sharp
             self.label_status.configure(text="Downloading ml-sharp from Apple...")
             url = "https://github.com/apple/ml-sharp/archive/refs/heads/main.zip"
             zip_path = "ml-sharp.zip"
@@ -88,16 +118,19 @@ class SharpWindowsApp(ctk.CTk):
 
             urllib.request.urlretrieve(url, zip_path, reporthook=download_progress)
 
+            # 4. Extract the ZIP
             self.label_status.configure(text="Extracting files...")
             self.progress_bar.set(0.5)
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
                 zip_ref.extractall(".")
             os.remove(zip_path)
 
-            self.label_status.configure(text="Creating isolated Python environment...")
+            # 5. Create venv
+            self.label_status.configure(text="Creating isolated AI environment...")
             self.progress_bar.set(0.6)
             subprocess.run([python_path, "-m", "venv", "backend_env"], check=True, creationflags=c_flags)
 
+            # 6. Install PyTorch & Dependencies
             self.label_status.configure(text="Installing PyTorch & AI Dependencies (5-10 mins)...")
             self.progress_bar.configure(mode="indeterminate") 
             self.progress_bar.start() 
