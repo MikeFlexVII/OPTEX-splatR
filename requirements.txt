@@ -1,0 +1,9 @@
+customtkinter
+plyfile
+pyinstaller
+numpy
+# (ml-sharp dependencies)
+torch
+torchvision
+tqdm
+pillow
