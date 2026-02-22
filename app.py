@@ -16,8 +16,9 @@ ctk.set_appearance_mode("Dark")
 class SharpWindowsApp(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("Sharp for Windows")
-        self.geometry("450x620") 
+        # --- App Branding ---
+        self.title("OPTEX splatR 1.0")
+        self.geometry("450x640") 
         self.filepath = None
         self.final_ply_path = None
         
@@ -67,8 +68,11 @@ class SharpWindowsApp(ctk.CTk):
         self.btn_generate = ctk.CTkButton(self, text="Generate Splat", command=self.generate, state="disabled")
         self.btn_generate.pack(pady=20)
 
-        # Preview Button (Hidden by default)
-        self.btn_preview = ctk.CTkButton(self, text="Preview 3D Model", command=self.preview_splat, fg_color="green", hover_color="darkgreen")
+        self.btn_preview = ctk.CTkButton(self, text="Preview", command=self.preview_splat, fg_color="green", hover_color="darkgreen")
+
+        # --- Footer ---
+        self.label_footer = ctk.CTkLabel(self, text="VC'd by Mike Flex (Gemini 3.1 CLI) 2026", text_color="gray", font=("Arial", 10))
+        self.label_footer.pack(side="bottom", pady=15)
 
         self.check_environment()
 
@@ -186,7 +190,6 @@ class SharpWindowsApp(ctk.CTk):
         if not self.filepath:
             return
             
-        # 1. Ask the user where they want to save the final file
         save_path = filedialog.asksaveasfilename(
             defaultextension=".ply",
             filetypes=[("3D Gaussian Splat", "*.ply")],
@@ -194,7 +197,6 @@ class SharpWindowsApp(ctk.CTk):
             initialfile="my_splat.ply"
         )
         
-        # If the user clicks "Cancel" on the save dialog, abort the process
         if not save_path:
             return
         
@@ -215,14 +217,20 @@ class SharpWindowsApp(ctk.CTk):
             try:
                 os.makedirs(temp_out_dir, exist_ok=True)
                 
-                # Inject user's slider value into the image's EXIF
                 selected_fl = self.slider_fl.get()
                 self.inject_exif_focal_length(self.filepath, temp_img, selected_fl)
 
-                # Feed the injected image to the Apple CLI using the correct syntax
-                subprocess.run([self.sharp_exe, "predict", "-i", temp_img, "-o", temp_out_dir], check=True, creationflags=c_flags)
+                result = subprocess.run(
+                    [self.sharp_exe, "predict", "-i", temp_img, "-o", temp_out_dir], 
+                    capture_output=True, 
+                    text=True, 
+                    creationflags=c_flags
+                )
                 
-                # Find the generated .ply file inside the output folder
+                if result.returncode != 0:
+                    error_text = result.stderr.strip()[-300:] 
+                    raise RuntimeError(f"ml-sharp crash:\n{error_text}")
+                
                 generated_ply = None
                 for file in os.listdir(temp_out_dir):
                     if file.endswith(".ply"):
@@ -232,11 +240,9 @@ class SharpWindowsApp(ctk.CTk):
                 if not generated_ply:
                     raise FileNotFoundError("ml-sharp finished, but no .ply was found.")
                 
-                # Apply SH filter and save DIRECTLY to the user's chosen save_path
                 selected_level = int(self.sh_var.get()[0])
                 filter_sh_level(generated_ply, save_path, selected_level)
                 
-                # Clean up temporary files/folders
                 if os.path.exists(temp_img): os.remove(temp_img)
                 shutil.rmtree(temp_out_dir, ignore_errors=True)
                     

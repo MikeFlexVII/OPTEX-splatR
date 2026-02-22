@@ -24,10 +24,10 @@ jobs:
         
     - name: Build with PyInstaller
       run: |
-        pyinstaller --noconsole --onedir --icon=app.ico app.py
+        pyinstaller --noconsole --onedir --icon=app.ico --name "OPTEX splatR 1.0" --contents-directory bin app.py
         
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: SharpGlass-Windows-Build
-        path: dist/app/
+        name: OPTEX-splatR
+        path: 'dist/OPTEX splatR 1.0/'
