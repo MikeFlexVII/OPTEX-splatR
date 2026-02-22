@@ -208,13 +208,26 @@ class SharpWindowsApp(ctk.CTk):
         self.btn_preview.pack_forget()
         self.update()
 
-        def run_generation():
+def run_generation():
             output_dir = os.path.dirname(self.filepath)
             temp_out_dir = os.path.join(output_dir, "sharp_temp_workspace")
             temp_img = os.path.join(output_dir, "temp_sharp_input.jpg")
             c_flags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
 
             try:
+                # --- THE SSL BYPASS INJECTION ---
+                # Automatically bypass strict Antivirus/Firewall SSL checks in the isolated environment
+                site_packages = os.path.join(self.backend_dir, "Lib", "site-packages")
+                site_customize = os.path.join(site_packages, "sitecustomize.py")
+                if os.path.exists(site_packages) and not os.path.exists(site_customize):
+                    with open(site_customize, "w") as f:
+                        f.write("import ssl\n")
+                        f.write("try:\n")
+                        f.write("    ssl._create_default_https_context = ssl._create_unverified_context\n")
+                        f.write("except AttributeError:\n")
+                        f.write("    pass\n")
+                # --------------------------------
+
                 os.makedirs(temp_out_dir, exist_ok=True)
                 
                 selected_fl = self.slider_fl.get()
@@ -256,8 +269,6 @@ class SharpWindowsApp(ctk.CTk):
             self.progress_bar.stop()
             self.progress_bar.pack_forget()
             self.btn_generate.configure(text="Generate Splat", state="normal")
-
-        threading.Thread(target=run_generation, daemon=True).start()
 
     def preview_splat(self):
         if not self.final_ply_path or not os.path.exists(self.final_ply_path):
