@@ -7,14 +7,19 @@ This application acts as a standalone GUI wrapper that automatically downloads t
 ## ✨ Features
 
 **Auto-Model Download:** Automatically fetches the required PyTorch models upon first run.
+
 **Focal Length Pre-processing:** Fine-tune your image parameters before generation.
+
 **Adjustable Spherical Harmonics (SH):** Lower the SH level (0-3) before export to significantly minimize `.ply` file sizes—perfect for web and streaming use.
+
 **Instant 3D Preview:** Review your results immediately in a pop-up 3D `.ply` viewer.
 
 ## ⚡ Performance & Quality
 
 **Speed:** Basic generation currently takes a few minutes per image on CPU. (Note: Speed will increase drastically in future GPU-accelerated builds).
+
 **Quality:** Upon inspection, output quality appears highly comparable to other splatting platforms. 
+
 **File Size:** Expect approximately ~63MB per exported `.ply` file at default/high settings.
 
 ## ⚠️ License and Usage Restrictions
